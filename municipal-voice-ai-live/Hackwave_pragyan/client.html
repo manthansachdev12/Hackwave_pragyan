@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Municipal Voice AI - Test Client</title>
+    <script src="https://unpkg.com/livekit-client/dist/livekit-client.umd.js"></script>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1e3c72;
+            text-align: center;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            text-align: center;
+            font-weight: bold;
+        }
+        .disconnected { background: #f8d7da; color: #721c24; }
+        .connecting { background: #fff3cd; color: #856404; }
+        .connected { background: #d4edda; color: #155724; }
+        button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+            width: 200px;
+        }
+        button:hover {
+            background: #218838;
+        }
+        button.hangup {
+            background: #dc3545;
+        }
+        button.hangup:hover {
+            background: #c82333;
+        }
+        .button-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .instructions {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏛️ Municipal Voice AI Test Client</h1>
+        
+        <div id="status" class="status disconnected">Disconnected</div>
+        
+        <div class="button-container">
+            <button id="connectBtn" onclick="connect()">📞 Connect</button>
+            <button id="disconnectBtn" class="hangup" onclick="disconnect()" disabled>📞 Disconnect</button>
+        </div>
+        
+        <div class="instructions">
+            <h3>Testing Instructions:</h3>
+            <ol>
+                <li>Make sure the Python agent is running: <code>python municipal_agent.py dev</code></li>
+                <li>Start the token server: <code>python token_server.py</code></li>
+                <li>Click "Connect" to join a voice room</li>
+                <li>Allow microphone access when prompted</li>
+                <li>Speak about municipal services</li>
+                <li>The AI will respond through your speakers</li>
+            </ol>
+        </div>
+        
+        <div id="roomInfo" style="display: none;">
+            <h3>Connection Details:</h3>
+            <p><strong>Room:</strong> <span id="roomName"></span></p>
+            <p><strong>Status:</strong> <span id="connectionStatus">Connecting...</span></p>
+        </div>
+    </div>
+
+    <script>
+        let room = null;
+        let currentRoomName = null;
+        
+        async function connect() {
+            try {
+                // Generate a random room name
+                currentRoomName = 'municipal-call-' + Math.random().toString(36).substring(2, 10);
+                document.getElementById('roomName').textContent = currentRoomName;
+                
+                // Get token from server
+                const response = await fetch(`http://localhost:5000/token/test-user/${currentRoomName}`);
+                const data = await response.json();
+                
+                if (!data.token) {
+                    throw new Error('Failed to get token');
+                }
+                
+                // Update UI
+                document.getElementById('status').className = 'status connecting';
+                document.getElementById('status').textContent = 'Connecting...';
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+                document.getElementById('roomInfo').style.display = 'block';
+                
+                // Connect to LiveKit
+                const url = 'wss://your-project.livekit.cloud'; // Replace with your LiveKit URL
+                room = new LiveKit.Room();
+                
+                room.on(LiveKit.RoomEvent.Connected, () => {
+                    document.getElementById('status').className = 'status connected';
+                    document.getElementById('status').textContent = 'Connected';
+                    document.getElementById('connectionStatus').textContent = 'Connected';
+                });
+                
+                room.on(LiveKit.RoomEvent.Disconnected, () => {
+                    document.getElementById('status').className = 'status disconnected';
+                    document.getElementById('status').textContent = 'Disconnected';
+                    document.getElementById('connectBtn').disabled = false;
+                    document.getElementById('disconnectBtn').disabled = true;
+                    document.getElementById('roomInfo').style.display = 'none';
+                });
+                
+                await room.connect(url, data.token);
+                
+                // Enable microphone
+                const track = await LiveKit.createLocalAudioTrack();
+                await room.localParticipant.publishTrack(track);
+                
+            } catch (error) {
+                console.error('Connection failed:', error);
+                document.getElementById('status').className = 'status disconnected';
+                document.getElementById('status').textContent = 'Connection failed: ' + error.message;
+                document.getElementById('connectBtn').disabled = false;
+            }
+        }
+        
+        function disconnect() {
+            if (room) {
+                room.disconnect();
+            }
+        }
+    </script>
+</body>
+</html>
